@@ -1,0 +1,767 @@
+---
+title: "Monitoreo meteorológico"
+subtitle: "Vivero y Jardín Pumahuida"  
+date: last-modified
+---
+
+```{r}
+#| label: configuracion
+#| include: false
+
+paquetes <- c(
+  "readxl", "readr", "dplyr", "tibble",
+  "plotly", "DT", "htmltools"
+)
+
+faltantes <- paquetes[!vapply(paquetes, requireNamespace, logical(1), quietly = TRUE)]
+
+if (length(faltantes) > 0) {
+  stop(
+    "Faltan los siguientes paquetes: ",
+    paste(faltantes, collapse = ", "),
+    ". Ejecute instalar_paquetes.R antes de renderizar."
+  )
+}
+
+library(readxl)
+library(readr)
+library(dplyr)
+library(tibble)
+library(plotly)
+library(DT)
+library(htmltools)
+
+zona_horaria <- "America/Santiago"
+archivo_excel <- "datos/Datos_Parcela_CAE2.xlsx"
+
+convertir_fecha_hora <- function(x, zona = zona_horaria) {
+
+  # Caso 1: readxl ya reconoció la columna como fecha y hora.
+  # Se fija explícitamente el formato para evitar errores regionales.
+  if (inherits(x, "POSIXt")) {
+    texto <- format(
+      x,
+      format = "%Y-%m-%d %H:%M:%S",
+      tz = attr(x, "tzone")[1]
+    )
+
+    return(
+      as.POSIXct(
+        texto,
+        format = "%Y-%m-%d %H:%M:%S",
+        tz = zona
+      )
+    )
+  }
+
+  # Caso 2: la columna contiene solamente fechas.
+  if (inherits(x, "Date")) {
+    return(
+      as.POSIXct(
+        paste(x, "00:00:00"),
+        format = "%Y-%m-%d %H:%M:%S",
+        tz = zona
+      )
+    )
+  }
+
+  # Caso 3: números seriales de Excel.
+  if (is.numeric(x)) {
+    origen_utc <- as.POSIXct(
+      "1899-12-30 00:00:00",
+      format = "%Y-%m-%d %H:%M:%S",
+      tz = "UTC"
+    )
+
+    texto <- format(
+      origen_utc + x * 86400,
+      format = "%Y-%m-%d %H:%M:%S",
+      tz = "UTC"
+    )
+
+    return(
+      as.POSIXct(
+        texto,
+        format = "%Y-%m-%d %H:%M:%S",
+        tz = zona
+      )
+    )
+  }
+
+  # Caso 4: fechas almacenadas como texto.
+  texto <- trimws(as.character(x))
+
+  formatos <- c(
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d %H:%M",
+    "%d-%m-%Y %H:%M:%S",
+    "%d-%m-%Y %H:%M",
+    "%d/%m/%Y %H:%M:%S",
+    "%d/%m/%Y %H:%M",
+    "%m/%d/%Y %H:%M:%S",
+    "%m/%d/%Y %H:%M"
+  )
+
+  resultado <- as.POSIXct(
+    rep(NA_character_, length(texto)),
+    format = "%Y-%m-%d %H:%M:%S",
+    tz = zona
+  )
+
+  for (formato in formatos) {
+    pendientes <- is.na(resultado) & !is.na(texto) & nzchar(texto)
+
+    if (!any(pendientes)) {
+      break
+    }
+
+    resultado[pendientes] <- as.POSIXct(
+      texto[pendientes],
+      format = formato,
+      tz = zona
+    )
+  }
+
+  resultado
+}
+
+convertir_fecha <- function(x) {
+  if (inherits(x, "Date")) {
+    return(x)
+  }
+
+  if (inherits(x, "POSIXt")) {
+    return(as.Date(x))
+  }
+
+  as.Date(as.numeric(x), origin = "1899-12-30")
+}
+
+datos_raw <- read_excel(archivo_excel)
+
+columnas_numericas <- setdiff(
+  names(datos_raw),
+  c("fecha_hora", "fecha", "CVMeta")
+)
+
+datos_raw <- datos_raw |>
+  mutate(
+    fecha_hora = convertir_fecha_hora(fecha_hora),
+    fecha = convertir_fecha(fecha),
+    across(
+      all_of(columnas_numericas),
+      ~ suppressWarnings(parse_number(as.character(.x)))
+    )
+  ) |>
+  arrange(fecha_hora)
+
+# El CSV descargable se actualiza automáticamente al renderizar.
+datos_exportar <- datos_raw |>
+  mutate(
+    fecha_hora = format(fecha_hora, "%Y-%m-%d %H:%M:%S"),
+    fecha = format(fecha, "%Y-%m-%d")
+  )
+
+write_csv(
+  datos_exportar,
+  "datos/Datos_Parcela_CAE2.csv",
+  na = ""
+)
+
+# Para evitar que errores puntuales destruyan la escala visual,
+# solo estas tres variables se acotan en los gráficos.
+# Los archivos descargables conservan los valores originales.
+anomalias <- bind_rows(
+  datos_raw |>
+    filter(!is.na(RH), RH < 0 | RH > 100) |>
+    transmute(
+      fecha_hora,
+      variable = "Humedad relativa (RH)",
+      valor = RH,
+      criterio = "Rango visual esperado: 0–100 %"
+    ),
+  datos_raw |>
+    filter(!is.na(BP_mbar_Avg), BP_mbar_Avg < 800 | BP_mbar_Avg > 1100) |>
+    transmute(
+      fecha_hora,
+      variable = "Presión atmosférica",
+      valor = BP_mbar_Avg,
+      criterio = "Rango visual esperado: 800–1100 mbar"
+    ),
+  datos_raw |>
+    filter(!is.na(VP_mbar_Avg), VP_mbar_Avg < 0 | VP_mbar_Avg > 100) |>
+    transmute(
+      fecha_hora,
+      variable = "Presión de vapor",
+      valor = VP_mbar_Avg,
+      criterio = "Rango visual esperado: 0–100 mbar"
+    )
+)
+
+datos_plot <- datos_raw |>
+  mutate(
+    RH = if_else(RH >= 0 & RH <= 100, RH, NA_real_),
+    BP_mbar_Avg = if_else(
+      BP_mbar_Avg >= 800 & BP_mbar_Avg <= 1100,
+      BP_mbar_Avg,
+      NA_real_
+    ),
+    VP_mbar_Avg = if_else(
+      VP_mbar_Avg >= 0 & VP_mbar_Avg <= 100,
+      VP_mbar_Avg,
+      NA_real_
+    )
+  )
+
+inicio <- min(datos_raw$fecha_hora, na.rm = TRUE)
+fin <- max(datos_raw$fecha_hora, na.rm = TRUE)
+periodo_esperado <- seq(inicio, fin, by = "hour")
+registros_unicos <- n_distinct(datos_raw$fecha_hora)
+registros_esperados <- length(periodo_esperado)
+horas_faltantes <- registros_esperados - registros_unicos
+cobertura <- 100 * registros_unicos / registros_esperados
+
+
+ultimo_registro <- datos_plot |>
+  filter(!is.na(fecha_hora)) |>
+  slice_max(fecha_hora, n = 1, with_ties = FALSE)
+
+ultimo_dia <- as.Date(fin)
+lluvia_ultimo_dia <- datos_plot |>
+  filter(as.Date(fecha_hora) == ultimo_dia) |>
+  summarise(valor = sum(Rain_mm_Tot, na.rm = TRUE)) |>
+  pull(valor)
+
+hora_ultimo_registro <- as.integer(format(fin, "%H"))
+icono_actual <- if (lluvia_ultimo_dia > 0) "☂" else if (hora_ultimo_registro >= 7 && hora_ultimo_registro < 19) "☀" else "☾"
+
+etos_ultimo_dia <- datos_plot |>
+  filter(as.Date(fecha_hora) == ultimo_dia) |>
+  summarise(valor = sum(ETos, na.rm = TRUE)) |>
+  pull(valor)
+
+formatear_metrica <- function(x, decimales = 1, sufijo = "") {
+  if (length(x) == 0 || is.na(x) || !is.finite(x)) {
+    return("Sin dato")
+  }
+
+  paste0(
+    format(round(x, decimales), nsmall = decimales, decimal.mark = ","),
+    sufijo
+  )
+}
+
+paleta_variables <- c(
+  SlrFD_W_Avg = "#DDAE54",
+  Rso = "#C99332",
+  Rain_mm_Tot = "#4F99AE",
+  Strikes_Tot = "#7D78A8",
+  Dist_km_Avg = "#6F8FA5",
+  WS_ms_Avg = "#2E7B63",
+  MaxWS_ms_Avg = "#225B49",
+  WindDir = "#88A998",
+  AirT_C_Avg = "#BE745A",
+  RHT_C = "#D58C70",
+  RH = "#5DA4B5",
+  VP_mbar_Avg = "#78B3BF",
+  BP_mbar_Avg = "#667C91",
+  ETos = "#C28B45"
+)
+
+diccionario <- tribble(
+  ~grupo, ~variable, ~titulo, ~unidad, ~tipo,
+  "Radiación", "SlrFD_W_Avg", "Radiación global en W m⁻²", "W m⁻²", "linea",
+  "Radiación", "Rso", "Radiación global en MJ m⁻² h⁻¹", "MJ m⁻² h⁻¹", "linea",
+
+  "Precipitación y tormentas", "Rain_mm_Tot", "Precipitación horaria", "mm", "barra",
+  "Precipitación y tormentas", "Strikes_Tot", "Descargas eléctricas detectadas", "número", "barra",
+  "Precipitación y tormentas", "Dist_km_Avg", "Distancia promedio de descargas", "km", "linea",
+
+  "Viento", "WS_ms_Avg", "Velocidad media del viento", "m s⁻¹", "linea",
+  "Viento", "MaxWS_ms_Avg", "Velocidad máxima del viento", "m s⁻¹", "linea",
+  "Viento", "WindDir", "Dirección del viento", "grados", "puntos",
+
+  "Temperatura y humedad", "AirT_C_Avg", "Temperatura del aire", "°C", "linea",
+  "Temperatura y humedad", "RHT_C", "Temperatura del sensor de humedad", "°C", "linea",
+  "Temperatura y humedad", "RH", "Humedad relativa", "%", "linea",
+  "Temperatura y humedad", "VP_mbar_Avg", "Presión de vapor", "mbar", "linea",
+
+  "Atmósfera y agua", "BP_mbar_Avg", "Presión atmosférica", "mbar", "linea",
+  "Atmósfera y agua", "ETos", "Evapotranspiración de referencia horaria", "mm", "barra"
+)
+
+grafico_serie <- function(variable, titulo, unidad, tipo = "linea") {
+  d <- datos_plot[, c("fecha_hora", variable)]
+  names(d)[2] <- "valor"
+  d <- d[!is.na(d$fecha_hora) & !is.na(d$valor), ]
+
+  color_serie <- unname(paleta_variables[variable])
+  if (length(color_serie) == 0 || is.na(color_serie)) {
+    color_serie <- "#2E7B63"
+  }
+
+  texto_hover <- paste0(
+    "%{x|%d-%m-%Y %H:%M}<br>",
+    "<b>", titulo, "</b>: %{y:.2f} ",
+    unidad,
+    "<extra></extra>"
+  )
+
+  if (tipo == "barra") {
+    p <- plot_ly(
+      d,
+      x = ~fecha_hora,
+      y = ~valor,
+      type = "bar",
+      marker = list(color = color_serie, opacity = 0.84),
+      hovertemplate = texto_hover
+    )
+  } else if (tipo == "puntos") {
+    p <- plot_ly(
+      d,
+      x = ~fecha_hora,
+      y = ~valor,
+      type = "scatter",
+      mode = "markers",
+      marker = list(
+        size = 5,
+        opacity = 0.58,
+        color = color_serie,
+        line = list(width = 0)
+      ),
+      hovertemplate = texto_hover
+    )
+  } else {
+    p <- plot_ly(
+      d,
+      x = ~fecha_hora,
+      y = ~valor,
+      type = "scatter",
+      mode = "lines",
+      line = list(width = 1.55, color = color_serie),
+      connectgaps = FALSE,
+      hovertemplate = texto_hover
+    )
+  }
+
+  eje_y <- list(
+    title = list(text = unidad, standoff = 8),
+    fixedrange = FALSE,
+    gridcolor = "rgba(18,54,46,0.075)",
+    zerolinecolor = "rgba(18,54,46,0.10)",
+    tickfont = list(color = "#68766F")
+  )
+
+  if (variable == "WindDir") {
+    eje_y <- list(
+      title = list(text = "Dirección", standoff = 8),
+      range = c(0, 360),
+      tickvals = c(0, 90, 180, 270, 360),
+      ticktext = c("N", "E", "S", "O", "N"),
+      gridcolor = "rgba(18,54,46,0.075)",
+      tickfont = list(color = "#68766F")
+    )
+  }
+
+  p |>
+    layout(
+      title = list(
+        text = paste0("<b>", titulo, "</b>"),
+        x = 0.025,
+        xanchor = "left",
+        font = list(size = 16, color = "#17362E")
+      ),
+      xaxis = list(
+        title = "",
+        gridcolor = "rgba(18,54,46,0.055)",
+        tickfont = list(color = "#68766F"),
+        rangeslider = list(
+          visible = TRUE,
+          thickness = 0.10,
+          bgcolor = "rgba(46,123,99,0.045)",
+          bordercolor = "rgba(46,123,99,0.10)"
+        ),
+        rangeselector = list(
+          bgcolor = "rgba(232,242,237,0.92)",
+          activecolor = "#A8CDBB",
+          bordercolor = "rgba(18,54,46,0.08)",
+          font = list(size = 10, color = "#225B49"),
+          buttons = list(
+            list(count = 7, label = "7 d", step = "day", stepmode = "backward"),
+            list(count = 1, label = "1 mes", step = "month", stepmode = "backward"),
+            list(count = 3, label = "3 meses", step = "month", stepmode = "backward"),
+            list(step = "all", label = "Todo")
+          )
+        )
+      ),
+      yaxis = eje_y,
+      hovermode = "x unified",
+      hoverlabel = list(
+        bgcolor = "#17362E",
+        bordercolor = "#17362E",
+        font = list(color = "white")
+      ),
+      paper_bgcolor = "rgba(0,0,0,0)",
+      plot_bgcolor = "rgba(0,0,0,0)",
+      font = list(
+        family = "Inter, Aptos, Segoe UI, sans-serif",
+        color = "#43534D"
+      ),
+      margin = list(l = 58, r = 22, t = 68, b = 48),
+      height = 405,
+      showlegend = FALSE
+    ) |>
+    config(
+      displaylogo = FALSE,
+      responsive = TRUE,
+      scrollZoom = TRUE,
+      modeBarButtonsToRemove = c("lasso2d", "select2d"),
+      toImageButtonOptions = list(
+        format = "png",
+        filename = variable,
+        height = 700,
+        width = 1200,
+        scale = 2
+      )
+    )
+}
+
+mostrar_grupo <- function(nombre_grupo) {
+  info <- diccionario[diccionario$grupo == nombre_grupo, ]
+
+  div(
+    class = "plot-grid",
+    lapply(seq_len(nrow(info)), function(i) {
+      div(
+        class = "plot-card",
+        grafico_serie(
+          variable = info$variable[i],
+          titulo = info$titulo[i],
+          unidad = info$unidad[i],
+          tipo = info$tipo[i]
+        )
+      )
+    })
+  )
+}
+
+tarjeta <- function(etiqueta, valor, nota = NULL, icono = "•", acento = "forest") {
+  div(
+    class = paste("metric-card", paste0("accent-", acento)),
+    div(
+      class = "metric-head",
+      span(class = "metric-label", etiqueta),
+      span(class = "metric-icon", icono)
+    ),
+    span(class = "metric-value", valor),
+    if (!is.null(nota)) span(class = "metric-note", nota)
+  )
+}
+```
+
+
+```{r}
+#| label: portada
+#| results: asis
+
+div(
+  class = "hero-shell column-screen-inset",
+  div(
+    class = "hero-copy",
+    div(
+      class = "hero-badge",
+      span(class = "status-dot"),
+      "Estación meteorológica · Pumahuida"
+    ),
+    h1(
+      class = "hero-title",
+      HTML("Registros meteorológicos, <em>convertidos en información.</em>")
+    ),
+    p(
+      class = "hero-subtitle",
+      "Explore la evolución de las variables meteorológicas, revise la calidad de los registros y descargue la base completa desde una sola página."
+    ),
+    div(
+      class = "hero-actions",
+      tags$a(
+        class = "hero-button primary",
+        href = "#variables-meteorologicas",
+        "Explorar registros  →"
+      ),
+      tags$a(
+        class = "hero-button secondary",
+        href = "datos/Datos_Parcela_CAE2.xlsx",
+        download = "Datos_Parcela_CAE2.xlsx",
+        "↓  Descargar Excel"
+      )
+    ),
+    div(
+      class = "hero-meta",
+      span("◷", paste("Datos horarios ·", format(inicio, "%d-%m-%Y"), "al", format(fin, "%d-%m-%Y"))),
+      span("◎", paste0(format(round(cobertura, 1), decimal.mark = ","), " % de cobertura temporal"))
+    )
+  ),
+  div(
+    class = "hero-weather",
+    div(
+      class = "weather-top",
+      div(
+        span(class = "weather-label", "Último registro disponible"),
+        div(class = "weather-time", format(fin, "%d-%m-%Y · %H:%M"))
+      ),
+      div(class = "weather-icon", icono_actual)
+    ),
+    div(
+      class = "current-temp",
+      HTML(paste0(formatear_metrica(ultimo_registro$AirT_C_Avg, 1), "<small> °C</small>"))
+    ),
+    div(
+      class = "weather-grid",
+      div(
+        class = "weather-item",
+        span("Humedad relativa"),
+        strong(formatear_metrica(ultimo_registro$RH, 1, " %"))
+      ),
+      div(
+        class = "weather-item",
+        span("Viento medio"),
+        strong(formatear_metrica(ultimo_registro$WS_ms_Avg, 1, " m/s"))
+      ),
+      div(
+        class = "weather-item",
+        span("Lluvia del día"),
+        strong(formatear_metrica(lluvia_ultimo_dia, 2, " mm"))
+      ),
+      div(
+        class = "weather-item",
+        span("ETo del día"),
+        strong(formatear_metrica(etos_ultimo_dia, 2, " mm"))
+      )
+    )
+  )
+)
+```
+
+<div class="section-eyebrow">Visión general</div>
+
+## Resumen del monitoreo {#resumen-monitoreo}
+
+<p class="section-lead">Una lectura rápida del alcance, continuidad y actualización de la serie meteorológica.</p>
+
+```{r}
+div(
+  class = "metric-grid",
+  tarjeta(
+    "Período disponible",
+    paste(format(inicio, "%d-%m-%Y"), "a", format(fin, "%d-%m-%Y")),
+    "Serie con resolución horaria",
+    "◷",
+    "forest"
+  ),
+  tarjeta(
+    "Registros almacenados",
+    format(nrow(datos_raw), big.mark = ".", decimal.mark = ","),
+    paste(registros_unicos, "fechas y horas únicas"),
+    "▦",
+    "sky"
+  ),
+  tarjeta(
+    "Cobertura temporal",
+    paste0(format(round(cobertura, 1), decimal.mark = ","), " %"),
+    paste(horas_faltantes, "horas sin registro"),
+    "◉",
+    "sun"
+  ),
+  tarjeta(
+    "Última actualización",
+    format(fin, "%d-%m-%Y %H:%M"),
+    zona_horaria,
+    "↻",
+    "clay"
+  )
+)
+```
+
+::: {.callout-note}
+### Navegación interactiva
+
+Use los botones **7 d**, **1 mes**, **3 meses** o **Todo**. También puede arrastrar el selector inferior, acercarse con la rueda del mouse y descargar cada gráfico como imagen desde su barra de herramientas.
+:::
+
+
+<div class="section-eyebrow">Exploración detallada</div>
+
+## Variables meteorológicas {#variables-meteorologicas}
+
+<p class="section-lead">Acceda rápidamente a cada familia de sensores o recorra la página para observar la serie completa.</p>
+
+<div class="category-grid">
+  <a class="category-card" href="#radiacion"><span class="category-icon">☀</span><strong>Radiación</strong><small>Radiación global en dos unidades de medida</small></a>
+  <a class="category-card" href="#precipitacion"><span class="category-icon">☂</span><strong>Precipitación</strong><small>Lluvia, rayos y distancia de tormentas</small></a>
+  <a class="category-card" href="#viento"><span class="category-icon">↝</span><strong>Viento</strong><small>Velocidad media, máxima y dirección</small></a>
+  <a class="category-card" href="#temperatura"><span class="category-icon">◒</span><strong>Temperatura y HR</strong><small>Estado térmico y humedad del aire</small></a>
+  <a class="category-card" href="#atmosfera"><span class="category-icon">≋</span><strong>Atmósfera y agua</strong><small>Presión y evapotranspiración</small></a>
+</div>
+
+::: {.variable-section}
+### ☀ Radiación {#radiacion}
+
+<p class="group-lead">Describe la energía solar recibida por la parcela y su evolución a escala horaria.</p>
+
+```{r}
+mostrar_grupo("Radiación")
+```
+:::
+
+::: {.variable-section}
+### ☂ Precipitación y tormentas {#precipitacion}
+
+<p class="group-lead">Permite distinguir episodios de lluvia, actividad eléctrica y proximidad estimada de tormentas.</p>
+
+```{r}
+mostrar_grupo("Precipitación y tormentas")
+```
+:::
+
+::: {.variable-section}
+### ↝ Viento {#viento}
+
+<p class="group-lead">Integra velocidad media, ráfagas máximas y dirección predominante del flujo de aire.</p>
+
+```{r}
+mostrar_grupo("Viento")
+```
+:::
+
+::: {.variable-section}
+### ◒ Temperatura y humedad {#temperatura}
+
+<p class="group-lead">Presenta las condiciones térmicas, la humedad relativa y la presión de vapor del aire.</p>
+
+```{r}
+mostrar_grupo("Temperatura y humedad")
+```
+:::
+
+::: {.variable-section}
+### ≋ Atmósfera y agua {#atmosfera}
+
+<p class="group-lead">Reúne la presión atmosférica y la evapotranspiración de referencia estimada.</p>
+
+```{r}
+mostrar_grupo("Atmósfera y agua")
+```
+:::
+
+
+<div class="section-eyebrow">Control y trazabilidad</div>
+
+## Calidad de los datos {#calidad-datos}
+
+<p class="section-lead">Los valores sospechosos se identifican sin alterar la base original ni ocultarlos de las descargas.</p>
+
+::: {.callout-warning}
+### Valores que requieren revisión
+
+Los gráficos excluyen únicamente los valores de **humedad relativa**, **presión atmosférica** y **presión de vapor** que quedan claramente fuera de sus rangos visuales esperados. Esta medida evita escalas ilegibles; los archivos descargables y la tabla mantienen los datos originales.
+:::
+
+```{r}
+if (nrow(anomalias) == 0) {
+  div(
+    class = "metric-card accent-forest",
+    div(class = "metric-head", span(class = "metric-label", "Control de calidad"), span(class = "metric-icon", "✓")),
+    span(class = "metric-value", "Sin anomalías configuradas"),
+    span(class = "metric-note", "No se detectaron valores fuera de los rangos establecidos.")
+  )
+} else {
+  datatable(
+    anomalias,
+    rownames = FALSE,
+    extensions = "Buttons",
+    class = "stripe hover compact",
+    options = list(
+      dom = "Bfrtip",
+      buttons = c("copy", "csv"),
+      pageLength = 10,
+      scrollX = TRUE,
+      language = list(
+        search = "Buscar:",
+        info = "Mostrando _START_ a _END_ de _TOTAL_ observaciones",
+        paginate = list(previous = "Anterior", `next` = "Siguiente")
+      )
+    )
+  )
+}
+```
+
+La cobertura temporal se calcula respecto de una secuencia horaria continua entre la primera y la última medición. Las horas no registradas no se rellenan ni interpolan.
+
+<div class="section-eyebrow">Base completa</div>
+
+## Datos y descargas {#datos-y-descargas}
+
+
+La tabla permite buscar, ordenar y exportar los registros visibles. En pantallas pequeñas puede desplazarse horizontalmente.
+
+```{r}
+tabla_mostrar <- datos_raw |>
+  mutate(
+    fecha_hora = format(fecha_hora, "%Y-%m-%d %H:%M:%S"),
+    fecha = format(fecha, "%Y-%m-%d")
+  )
+
+datatable(
+  tabla_mostrar,
+  rownames = FALSE,
+  filter = "top",
+  extensions = c("Buttons", "Scroller"),
+  class = "stripe hover compact",
+  options = list(
+    dom = "Bfrtip",
+    buttons = c("copy", "csv", "excel"),
+    deferRender = TRUE,
+    scrollX = TRUE,
+    scrollY = 520,
+    scroller = TRUE,
+    pageLength = 25,
+    language = list(
+      search = "Buscar:",
+      zeroRecords = "No se encontraron registros",
+      info = "Mostrando _START_ a _END_ de _TOTAL_ registros",
+      infoEmpty = "No hay registros disponibles",
+      paginate = list(previous = "Anterior", `next` = "Siguiente")
+    )
+  )
+)
+```
+
+## Diccionario de variables {#diccionario}
+
+```{r}
+diccionario_mostrar <- diccionario |>
+  select(grupo, variable, titulo, unidad) |>
+  rename(
+    Grupo = grupo,
+    Variable = variable,
+    Descripción = titulo,
+    Unidad = unidad
+  )
+
+datatable(
+  diccionario_mostrar,
+  rownames = FALSE,
+  class = "stripe hover compact",
+  options = list(
+    dom = "t",
+    paging = FALSE,
+    ordering = FALSE
+  )
+)
+```
+
+::: {.callout-note}
+### Actualización de la página
+
+La actualización de los datos se realiza cada siete días.
+:::

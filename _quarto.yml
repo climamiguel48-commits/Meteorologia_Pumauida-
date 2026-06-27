@@ -1,0 +1,52 @@
+project:
+  type: website
+  output-dir: docs
+  resources:
+    - datos/**
+    - assets/**
+
+website:
+  title: "Vivero y Jardín Pumahuida"   
+  favicon: assets/meteorologia-mark.svg
+  navbar:
+    logo: assets/meteorologia-mark.svg
+    background: "#12362E"
+    foreground: light
+    pinned: true
+    left:
+      - href: index.qmd
+        text: Inicio
+      - href: index.qmd#variables-meteorologicas
+        text: Variables
+      - href: index.qmd#datos-y-descargas
+        text: Datos
+    right:
+      - icon: download
+        text: Descargar Excel
+        href: datos/Datos_Parcela_CAE2.xlsx
+  page-footer:
+    border: false
+    left: "Monitoreo meteorológico"
+    right: "Datos, paisaje y decisiones"
+
+lang: es
+
+format:
+  html:
+    theme: cosmo
+    css: styles.css
+    toc: true
+    toc-title: "En esta página"
+    toc-location: right
+    smooth-scroll: true
+    code-fold: true
+    code-summary: "Ver código"
+    link-external-newwindow: true
+    title-block-banner: false
+    anchor-sections: true
+
+execute:
+  echo: false
+  warning: false
+  message: false
+  freeze: false

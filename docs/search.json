@@ -1,0 +1,44 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Monitoreo meteorológico",
+    "section": "",
+    "text": "Estación meteorológica · Pumahuida\n\n\nExplore la evolución de las variables meteorológicas, revise la calidad de los registros y descargue la base completa desde una sola página.\n\nExplorar registros  →\n↓  Descargar Excel\n\n\n\n◷\nDatos horarios · 02-09-2025 al 26-06-2026\n\n\n◎\n93,9 % de cobertura temporal\n\n\n\n\n\n\nÚltimo registro disponible\n26-06-2026 · 11:00\n\n☀\n\n10,3 °C\n\n\nHumedad relativa\n53,4 %\n\n\nViento medio\n0,8 m/s\n\n\nLluvia del día\n0,00 mm\n\n\nETo del día\n0,03 mm"
+  },
+  {
+    "objectID": "index.html#resumen-monitoreo",
+    "href": "index.html#resumen-monitoreo",
+    "title": "Monitoreo meteorológico",
+    "section": "Resumen del monitoreo",
+    "text": "Resumen del monitoreo\n\nUna lectura rápida del alcance, continuidad y actualización de la serie meteorológica.\n\n\n\n\n\n\nPeríodo disponible\n◷\n\n02-09-2025 a 26-06-2026\nSerie con resolución horaria\n\n\n\nRegistros almacenados\n▦\n\n6.693\n6693 fechas y horas únicas\n\n\n\nCobertura temporal\n◉\n\n93,9 %\n437 horas sin registro\n\n\n\nÚltima actualización\n↻\n\n26-06-2026 11:00\nAmerica/Santiago\n\n\n\n\n\n\n\n\n\n\nNotaNavegación interactiva\n\n\n\nUse los botones 7 d, 1 mes, 3 meses o Todo. También puede arrastrar el selector inferior, acercarse con la rueda del mouse y descargar cada gráfico como imagen desde su barra de herramientas.\n\n\n\nExploración detallada"
+  },
+  {
+    "objectID": "index.html#variables-meteorologicas",
+    "href": "index.html#variables-meteorologicas",
+    "title": "Monitoreo meteorológico",
+    "section": "Variables meteorológicas",
+    "text": "Variables meteorológicas\n\nAcceda rápidamente a cada familia de sensores o recorra la página para observar la serie completa.\n\n\n☀RadiaciónRadiación global en dos unidades de medida ☂PrecipitaciónLluvia, rayos y distancia de tormentas ↝VientoVelocidad media, máxima y dirección ◒Temperatura y HREstado térmico y humedad del aire ≋Atmósfera y aguaPresión y evapotranspiración\n\n\n☀ Radiación\n\nDescribe la energía solar recibida por la parcela y su evolución a escala horaria.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n☂ Precipitación y tormentas\n\nPermite distinguir episodios de lluvia, actividad eléctrica y proximidad estimada de tormentas.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n↝ Viento\n\nIntegra velocidad media, ráfagas máximas y dirección predominante del flujo de aire.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n◒ Temperatura y humedad\n\nPresenta las condiciones térmicas, la humedad relativa y la presión de vapor del aire.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n≋ Atmósfera y agua\n\nReúne la presión atmosférica y la evapotranspiración de referencia estimada.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nControl y trazabilidad"
+  },
+  {
+    "objectID": "index.html#calidad-datos",
+    "href": "index.html#calidad-datos",
+    "title": "Monitoreo meteorológico",
+    "section": "Calidad de los datos",
+    "text": "Calidad de los datos\n\nLos valores sospechosos se identifican sin alterar la base original ni ocultarlos de las descargas.\n\n\n\n\n\n\n\nAdvertenciaValores que requieren revisión\n\n\n\nLos gráficos excluyen únicamente los valores de humedad relativa, presión atmosférica y presión de vapor que quedan claramente fuera de sus rangos visuales esperados. Esta medida evita escalas ilegibles; los archivos descargables y la tabla mantienen los datos originales.\n\n\n\n\n\n\n\n\nLa cobertura temporal se calcula respecto de una secuencia horaria continua entre la primera y la última medición. Las horas no registradas no se rellenan ni interpolan.\n\nBase completa"
+  },
+  {
+    "objectID": "index.html#datos-y-descargas",
+    "href": "index.html#datos-y-descargas",
+    "title": "Monitoreo meteorológico",
+    "section": "Datos y descargas",
+    "text": "Datos y descargas\nLa tabla permite buscar, ordenar y exportar los registros visibles. En pantallas pequeñas puede desplazarse horizontalmente."
+  },
+  {
+    "objectID": "index.html#diccionario",
+    "href": "index.html#diccionario",
+    "title": "Monitoreo meteorológico",
+    "section": "Diccionario de variables",
+    "text": "Diccionario de variables\n\n\n\n\n\n\n\n\n\n\n\n\nNotaActualización de la página\n\n\n\nLa actualización de los datos se realiza cada siete días."
+  }
+]
